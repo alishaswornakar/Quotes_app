@@ -1,5 +1,7 @@
 import 'dart:math';
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
@@ -11,11 +13,20 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
-  String quote = "Loading...";
+
+  String quote = "";
   String author = "";
-  List quotesList = [];
-  bool isFavorite = false;
   bool isLoading = true;
+  bool isFavorite = false;
+
+  String selectedCategory = "motivational";
+
+  List<String> categories = [
+    "motivational",
+    "love",
+    "life",
+    "success"
+  ];
 
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
@@ -23,7 +34,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
-    fetchQuotes();
+    fetchQuote();
 
     _controller = AnimationController(
       vsync: this,
@@ -34,147 +45,209 @@ class _HomeScreenState extends State<HomeScreen>
         CurvedAnimation(parent: _controller, curve: Curves.easeIn);
   }
 
-  Future<void> fetchQuotes() async {
-    var snapshot =
-        await FirebaseFirestore.instance.collection('quotes').get();
+  // 🔥 FIRESTORE FETCH
+  Future<void> fetchQuote() async {
+    setState(() => isLoading = true);
 
-    quotesList = snapshot.docs;
-    showRandomQuote();
-  }
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('quotes')
+          .where('category', isEqualTo: selectedCategory)
+          .get();
 
-  Future<void> showRandomQuote() async {
-    if (quotesList.isNotEmpty) {
-      final random = Random();
-      var data = quotesList[random.nextInt(quotesList.length)];
+      if (snapshot.docs.isNotEmpty) {
+        final random = Random();
+        final doc =
+            snapshot.docs[random.nextInt(snapshot.docs.length)];
 
+        setState(() {
+          quote = doc['text'];
+          author = doc['author'];
+          isLoading = false;
+          isFavorite = false;
+        });
+
+        _controller.forward(from: 0);
+      } else {
+        setState(() {
+          quote = "No quotes found";
+          author = "";
+          isLoading = false;
+        });
+      }
+    } catch (e) {
       setState(() {
-        isLoading = true;
-      });
-
-      await Future.delayed(Duration(milliseconds: 300));
-
-      setState(() {
-        quote = data['text'];
-        author = data['author'];
-        isFavorite = false;
+        quote = "Error loading quotes";
+        author = "";
         isLoading = false;
       });
-
-      _controller.forward(from: 0);
     }
   }
 
+  // ❤️ FAVORITE (LOCAL)
   Future<void> toggleFavorite() async {
-    final prefs = await SharedPreferences.getInstance();
-    List<String> favs = prefs.getStringList('favorites') ?? [];
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
 
-    String current = "$quote - $author";
+  final docRef = FirebaseFirestore.instance
+      .collection('users')
+      .doc(user.uid)
+      .collection('favorites')
+      .doc("$quote-$author");
+      final doc = await docRef.get();
 
-    if (favs.contains(current)) {
-      favs.remove(current);
-      setState(() => isFavorite = false);
-    } else {
-      favs.add(current);
-      setState(() => isFavorite = true);
-    }
+  if (doc.exists) {
+    await docRef.delete();
+    isFavorite = false;
+  } else {
+    await docRef.set({
+      'quote': quote,
+      'author': author,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+    isFavorite = true;
+  }
+   setState(() {});
+}
 
-    await prefs.setStringList('favorites', favs);
+  // 📤 SHARE
+  void shareQuote() {
+    Share.share('"$quote" - $author');
+  }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(isFavorite ? "Added to favorites ❤️" : "Removed")),
+  Widget glassCard(Widget child) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(25),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+        child: Container(
+          padding: EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(25),
+            border: Border.all(color: Colors.white24),
+          ),
+          child: child,
+        ),
+      ),
     );
   }
 
-  void shareQuote() {
-    Share.share('"$quote" - $author');
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [Colors.deepPurple, Colors.black],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
           ),
         ),
-        child: Center(
-          child: Padding(
-            padding: EdgeInsets.all(20),
-            child: isLoading
-                ? CircularProgressIndicator(color: Colors.white)
-                : FadeTransition(
-                    opacity: _fadeAnimation,
-                    child: Column(
+        child: Padding(
+          padding: EdgeInsets.all(20),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+
+              // 🎭 CATEGORY DROPDOWN
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 15),
+                decoration: BoxDecoration(
+                  color: Colors.white10,
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: DropdownButton<String>(
+                  value: selectedCategory,
+                  dropdownColor: Colors.black,
+                  underline: SizedBox(),
+                  style: TextStyle(color: Colors.white),
+                  items: categories
+                      .map<DropdownMenuItem<String>>((category) {
+                    return DropdownMenuItem<String>(
+                      value: category,
+                      child: Text(category.toUpperCase()),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      selectedCategory = value!;
+                    });
+                    fetchQuote();
+                  },
+                ),
+              ),
+
+              SizedBox(height: 30),
+
+              // 💎 CARD
+              glassCard(
+                Column(
+                  children: [
+                    isLoading
+                        ? CircularProgressIndicator(color: Colors.white)
+                        : FadeTransition(
+                            opacity: _fadeAnimation,
+                            child: Column(
+                              children: [
+                                Icon(Icons.format_quote,
+                                    color: Colors.white70),
+                                SizedBox(height: 15),
+                                Text(
+                                  "\"$quote\"",
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20),
+                                ),
+                                SizedBox(height: 10),
+                                Text("- $author",
+                                    style: TextStyle(
+                                        color: Colors.white60)),
+                              ],
+                            ),
+                          ),
+
+                    SizedBox(height: 20),
+
+                    Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.format_quote,
-                            color: Colors.white70, size: 40),
-                        SizedBox(height: 20),
-
-                        Text(
-                          "\"$quote\"",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 24,
-                            fontStyle: FontStyle.italic,
+                        IconButton(
+                          icon: Icon(
+                            isFavorite
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                            color: Colors.red,
                           ),
+                          onPressed: toggleFavorite,
                         ),
-
-                        SizedBox(height: 20),
-
-                        Text(
-                          "- $author",
-                          style: TextStyle(
-                            color: Colors.white60,
-                            fontSize: 18,
-                          ),
+                        IconButton(
+                          icon: Icon(Icons.share,
+                              color: Colors.white),
+                          onPressed: shareQuote,
                         ),
-
-                        SizedBox(height: 40),
-
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            IconButton(
-                              icon: Icon(
-                                isFavorite
-                                    ? Icons.favorite
-                                    : Icons.favorite_border,
-                                color: Colors.red,
-                              ),
-                              onPressed: toggleFavorite,
-                            ),
-                            SizedBox(width: 20),
-                            IconButton(
-                              icon: Icon(Icons.share,
-                                  color: Colors.white),
-                              onPressed: shareQuote,
-                            ),
-                          ],
-                        ),
-
-                        SizedBox(height: 30),
-
-                        ElevatedButton(
-                          onPressed: showRandomQuote,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color.fromARGB(68, 124, 77, 255),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(30),
-                            ),
-                          ),
-                          child: Text("New Quote"),
-                        )
                       ],
                     ),
-                  ),
+                  ],
+                ),
+              ),
+
+              SizedBox(height: 30),
+
+              ElevatedButton(
+                onPressed: fetchQuote,
+                child: Text("New Quote"),
+              )
+            ],
           ),
         ),
       ),
     );
   }
-}  
+}
