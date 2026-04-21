@@ -30,7 +30,7 @@ class _MyAppState extends State<MyApp> {
         body: screens[currentIndex],
         bottomNavigationBar: BottomNavigationBar(
           backgroundColor: Colors.black,
-          selectedItemColor: Colors.deepPurpleAccent,
+          selectedItemColor: const Color.fromARGB(255, 77, 148, 255),
           unselectedItemColor: Colors.white60,
           currentIndex: currentIndex,
           onTap: (index) {
