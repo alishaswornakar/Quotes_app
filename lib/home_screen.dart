@@ -45,7 +45,7 @@ class _HomeScreenState extends State<HomeScreen>
         CurvedAnimation(parent: _controller, curve: Curves.easeIn);
   }
 
-  // 🔥 FIRESTORE FETCH
+  //  FIRESTORE FETCH
   Future<void> fetchQuote() async {
     setState(() => isLoading = true);
 
@@ -84,7 +84,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  // ❤️ FAVORITE (LOCAL)
+  //  FAVORITE (LOCAL)
   Future<void> toggleFavorite() async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return;
@@ -110,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen>
    setState(() {});
 }
 
-  // 📤 SHARE
+  //  SHARE
   void shareQuote() {
     Share.share('"$quote" - $author');
   }
@@ -155,7 +155,7 @@ class _HomeScreenState extends State<HomeScreen>
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
 
-              // 🎭 CATEGORY DROPDOWN
+              //  CATEGORY DROPDOWN
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 15),
                 decoration: BoxDecoration(
@@ -185,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen>
 
               SizedBox(height: 30),
 
-              // 💎 CARD
+              // CARD
               glassCard(
                 Column(
                   children: [
